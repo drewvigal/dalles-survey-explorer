@@ -539,7 +539,10 @@ async function delSticky(id){const n=allSticky().find(x=>x.id===id);if(!n)return
   if(DBMODE==="api"){STICKY=STICKY.filter(x=>x.id!==id);refreshSticky(n.target);try{await apiPost({action:"delete",id,secret:SECRET});}catch(e){}apiList();return;}
   if(DBMODE==="shared"){try{await DBREF.collection("notes").doc(id).delete();}catch(e){}return;}
   STICKY_LOCAL=STICKY_LOCAL.filter(x=>x.id!==id);saveLocalSticky();refreshSticky(n.target);}
-function refreshSticky(target){document.querySelectorAll(".stickywrap").forEach(el=>{if(el.dataset.target===target)el.innerHTML=stickyInner(target);});}
+function refreshSticky(target){document.querySelectorAll(".stickywrap").forEach(el=>{if(el.dataset.target!==target)return;
+  // a note is being typed here: update the posted notes only, so the 15-second refresh never closes the open form
+  if(el.querySelector(".noteform")){const t=document.createElement("div");t.innerHTML=stickyInner(target);el.querySelector(".stickies").replaceWith(t.querySelector(".stickies"));return;}
+  el.innerHTML=stickyInner(target);});}
 async function initShared(){
   if(NOTES_API){DBMODE="api";await apiList();setInterval(apiList,15000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)apiList();});return;}
   if(!(window.claude&&typeof window.claude.use==="function"))return;
@@ -706,7 +709,7 @@ document.addEventListener("click",e=>{const b=e.target.closest("nav button");if(
   if(e.target.id==="reset"){state.filters={};state.compare="";renderFilters();renderMain();}
   if(e.target.id==="rename"){document.getElementById("gate").style.display="flex";document.getElementById("gatename").value=ME;document.getElementById("gatename").focus();}
   if(e.target.id==="gatego"){const v=document.getElementById("gatename").value.trim();if(!v){document.getElementById("gatename").focus();return;}ME=v;try{localStorage.setItem("dalles_name",ME)}catch(x){}document.getElementById("gate").style.display="none";renderFilters();}
-  const add=e.target.closest(".addnote");if(add){const target=add.dataset.note;if(add.nextElementSibling&&add.nextElementSibling.classList.contains("noteform"))return;const f=document.createElement("div");f.className="noteform";f.innerHTML=`<textarea rows="2" placeholder="Leave a note for the class"></textarea><button class="savenote">Post</button><button class="cancelnote">Cancel</button>`;add.after(f);f.querySelector("textarea").focus();f.querySelector(".savenote").onclick=async()=>{const txt=f.querySelector("textarea").value.trim();if(!txt)return;await addSticky(target,txt);f.remove();};f.querySelector(".cancelnote").onclick=()=>f.remove();}
+  const add=e.target.closest(".addnote");if(add){const target=add.dataset.note;if(add.nextElementSibling&&add.nextElementSibling.classList.contains("noteform"))return;const f=document.createElement("div");f.className="noteform";f.innerHTML=`<textarea rows="2" placeholder="Leave a note for the class"></textarea><button class="savenote">Post</button><button class="cancelnote">Cancel</button>`;add.after(f);f.querySelector("textarea").focus();f.querySelector(".savenote").onclick=async()=>{const txt=f.querySelector("textarea").value.trim();if(!txt)return;f.remove();await addSticky(target,txt);};f.querySelector(".cancelnote").onclick=()=>f.remove();}
   const del=e.target.closest(".del");if(del){delSticky(del.dataset.del);}});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="gatename")document.getElementById("gatego").click();});
 document.addEventListener("change",e=>{if(e.target.dataset&&e.target.dataset.f){state.filters[e.target.dataset.f]=e.target.value;renderFilters();renderMain();}
