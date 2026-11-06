@@ -699,6 +699,22 @@ function ansFilterHtml(){const qs=ANSQ();const cur=qs.find(x=>x.id===state.ans.q
   return `<label>Filter by an answer<select id="ansq"><option value="">None</option>${og}</select>${a}</label>`;}
 function ansBanner(){const {q,a}=state.ans;if(!q||!a)return"";const d=ANSQ().find(x=>x.id===q);if(!d)return"";
   return `<div class="card" style="background:#FFFBE0;border-color:#d9c84a;padding:10px 14px;font-size:14px">Showing only people who answered <b>${esc(a)}</b> to: ${esc(d.label)}. <a id="ansclear" style="color:var(--accent);cursor:pointer;text-decoration:underline">Clear</a></div>`;}
+// ---------- deep links: the whole view lives in the address after #, so any view can be shared ----------
+function readHash(){try{const h=new URLSearchParams(location.hash.slice(1));if(![...h.keys()].length)return false;
+  const ns={page:"overview",filters:{},ans:{q:"",a:""},compare:"",q:"",field:"all"};
+  const p=h.get("p");if(p&&SECTIONS.some(x=>x[0]===p))ns.page=p;
+  S.filterDims.forEach(k=>{const v=h.get(k);if(v)ns.filters[k]=v;});
+  const aq=h.get("aq");if(aq&&ANSQ().some(x=>x.id===aq))ns.ans={q:aq,a:h.get("aa")||""};
+  const c=h.get("cmp");if(c&&[...S.filterDims,...S.compareExtra].includes(c))ns.compare=c;
+  if(h.get("q"))ns.q=h.get("q");const fl=h.get("fld");if(fl&&(fl==="all"||S.text[fl]))ns.field=fl;
+  Object.assign(state,ns);return true;}catch(e){return false;}}
+function writeHash(){try{const h=new URLSearchParams();if(state.page!=="overview")h.set("p",state.page);
+  Object.entries(state.filters).forEach(([k,v])=>{if(v)h.set(k,v);});
+  if(state.ans.q){h.set("aq",state.ans.q);if(state.ans.a)h.set("aa",state.ans.a);}
+  if(state.compare)h.set("cmp",state.compare);if(state.q)h.set("q",state.q);if(state.field!=="all")h.set("fld",state.field);
+  const t=h.toString();const url=location.pathname+location.search+(t?"#"+t:"");
+  if(url!==location.pathname+location.search+location.hash)history.replaceState(null,"",url);}catch(e){}}
+window.addEventListener("hashchange",()=>{if(readHash()){renderNav();renderFilters();renderMain();}});
 
 // ---------- helpers ----------
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -827,10 +843,10 @@ function renderNav(){document.getElementById("nav").innerHTML=SECTIONS.map(([k,l
 function renderFilters(){
   const el=document.getElementById("filters");const rows=filtered();
   el.innerHTML=S.filterDims.map(k=>{const d=S.single[k];const c=counts(ALL,k,d.order);return `<label>${esc(d.t.length>28?d.t.slice(0,26)+"…":d.t)}<select data-f="${k}"><option value="">All</option>${c.items.map(i=>`<option value="${esc(i.k)}" ${state.filters[k]===i.k?"selected":""}>${esc(i.k)} (${i.v})</option>`).join("")}</select></label>`;}).join("")+
-  ansFilterHtml()+`<label>Compare by<select id="cmp"><option value="">None</option>${[...S.filterDims,...S.compareExtra].map(k=>`<option value="${k}" ${state.compare===k?"selected":""}>${esc(S.single[k].t)}</option>`).join("")}</select></label><button id="reset">Reset filters</button><div class="count"><b>${rows.length}</b> of ${ALL.length} responses</div><div class="who">Notes signed as <b>${esc(ME||"…")}</b> · <a id="rename">change</a></div>`;
+  ansFilterHtml()+`<label>Compare by<select id="cmp"><option value="">None</option>${[...S.filterDims,...S.compareExtra].map(k=>`<option value="${k}" ${state.compare===k?"selected":""}>${esc(S.single[k].t)}</option>`).join("")}</select></label><button id="reset">Reset filters</button><button id="copylink">Copy link to this view</button><div class="count"><b>${rows.length}</b> of ${ALL.length} responses</div><div class="who">Notes signed as <b>${esc(ME||"…")}</b> · <a id="rename">change</a></div>`;
 }
 function renderMain(){
-  const rows=filtered();const m=document.getElementById("main");
+  writeHash();const rows=filtered();const m=document.getElementById("main");
   const p=state.page;
   m.innerHTML=`<section class="page on">${ansBanner()}${p==="overview"?pageOverview(rows):p==="sources"?pageSources(rows):p==="informed"?pageInformed(rows):p==="actions"?pageActions(rows):p==="topics"?pageTopics(rows):p==="emerg"?pageEmerg(rows):p==="who"?pageWho(rows):p==="text"?pageText(rows):pageMethod()}</section>`;
   if(p==="text"){const q=document.getElementById("q");q.oninput=e=>{state.q=e.target.value;clearTimeout(q._t);q._t=setTimeout(()=>{renderMain();document.getElementById("q").focus();},250);};
@@ -847,6 +863,7 @@ async function download(name,text){
   if(window.claude&&typeof window.claude.use==="function"){const d=await window.claude.use("downloads");if(d){try{await d.save({filename:name,data:text});}catch(e){if(e&&e.code!=="declined")alert("Download unavailable here: "+(e.message||e.code));}return;}}
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download=name;a.click();}
 document.addEventListener("click",e=>{const b=e.target.closest("nav button");if(b){state.page=b.dataset.p;renderNav();renderMain();window.scrollTo(0,0);}
+  if(e.target.id==="copylink"){const b=e.target;writeHash();const done=()=>{b.textContent="Link copied";setTimeout(()=>{b.textContent="Copy link to this view";},2000);};try{navigator.clipboard.writeText(location.href).then(done,()=>prompt("Copy this link:",location.href));}catch(x){prompt("Copy this link:",location.href);}}
   if(e.target.id==="ansclear"){state.ans={q:"",a:""};renderFilters();renderMain();}
   if(e.target.id==="reset"){state.filters={};state.ans={q:"",a:""};state.compare="";renderFilters();renderMain();}
   if(e.target.id==="rename"){document.getElementById("gate").style.display="flex";document.getElementById("gatename").value=ME;document.getElementById("gatename").focus();}
@@ -864,7 +881,7 @@ document.addEventListener("mousemove",e=>{const t=e.target.closest&&e.target.clo
 
 ALL=prep(loadRows(document.getElementById("csv").textContent));
 document.getElementById("sub").textContent+=` · ${ALL.length} cleaned responses (${META.version}) · export of ${META.exportDate}`;
-renderNav();renderFilters();renderMain();
+readHash();renderNav();renderFilters();renderMain();
 if(ME){document.getElementById("gate").style.display="none";}else{document.getElementById("gatename").focus();}
 initShared();
 </script>
