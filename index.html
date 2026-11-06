@@ -565,7 +565,8 @@ const S = {
     first_look_16_TEXT:"Looked first: other",
     live_4_TEXT:"Nearby town"
   },
-  filterDims:["day","age","live","years","language","politics","gender","work","found","UserLanguage","grad_year"]
+  filterDims:["day","age","live","years","language","politics","gender","work","found","UserLanguage","grad_year"],
+  compareExtra:["emerg_know","alerts","attention","first_look"]
 };
 const SECTIONS=[["overview","Overview"],["sources","Sources and trust"],["informed","Informed and able to act"],["actions","Actions and barriers"],["topics","Topics"],["emerg","Emergencies"],["who","Who answered"],["text","Open answers"],["method","Method"]];
 const CAT=["var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c5)","var(--c6)","var(--c7)"];
@@ -612,7 +613,7 @@ function dayOf(s){const m=String(s||"").match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}
 const EVENTS={"2026-10-13":"Survey opens","2026-10-21":"Dalles High in-person session","2026-10-29":"Dalles High evening wave","2026-11-02":"Media email; Dalles High class","2026-11-03":"Uplift Local newsletter","2026-11-08":"Survey closes"};
 function timelineCard(){
   // all filters except day, so the timeline keeps its shape and the chosen day is highlighted
-  const rows=ALL.filter(r=>Object.entries(state.filters).every(([k,v])=>k==="day"||!v||r[k]===v));
+  const rows=ALL.filter(r=>Object.entries(state.filters).every(([k,v])=>k==="day"||!v||r[k]===v)&&ansMatch(r));
   const m=new Map();rows.forEach(r=>{if(r._dayIso)m.set(r._dayIso,(m.get(r._dayIso)||0)+1);});
   if(!m.size)return "";
   const isos=[...m.keys()].sort();const days=[];
@@ -641,7 +642,7 @@ function prep(rows){
 }
 
 // ---------- state ----------
-let ALL=[], state={page:"overview",filters:{},compare:"",q:"",field:"all",tagOnly:false};
+let ALL=[], state={page:"overview",filters:{},ans:{q:"",a:""},compare:"",q:"",field:"all",tagOnly:false};
 let TAGS={},NOTES={},ME=""; try{TAGS=JSON.parse(localStorage.getItem("dalles_tags")||"{}");NOTES=JSON.parse(localStorage.getItem("dalles_notes")||"{}");ME=localStorage.getItem("dalles_name")||""}catch(e){}
 // sticky notes: shared through the page database when this viewer may write; otherwise saved on this device
 let STICKY=[],STICKY_LOCAL=[],DBREF=null,DBMODE="local",MYID="",SECRET="";
@@ -681,7 +682,23 @@ async function initShared(){
 }
 if(!MYID){MYID=localStorage.getItem("dalles_me")||("local-"+Math.random().toString(36).slice(2));try{localStorage.setItem("dalles_me",MYID)}catch(e){}}
 function saveTags(){try{localStorage.setItem("dalles_tags",JSON.stringify(TAGS));localStorage.setItem("dalles_notes",JSON.stringify(NOTES))}catch(e){}}
-function filtered(){return ALL.filter(r=>Object.entries(state.filters).every(([k,v])=>!v||r[k]===v));}
+function filtered(){return ALL.filter(r=>Object.entries(state.filters).every(([k,v])=>!v||r[k]===v)&&ansMatch(r));}
+// ---------- filter by an answer: any single question, rating-grid row or choose-all option ----------
+const ANS_SHORT={emerg_know:"Emergencies: how well you know where to find information",alerts:"Signed up for emergency alerts",attention:"Attention to local news vs. a few years ago",first_look:"Where you looked first for local news",found_org:"Heard about survey: which organization",found_media:"Heard about survey: which news outlet",race:"Race or ethnicity",actions:"Actions taken because of local news",barriers:"What gets in the way",topics:"Topics that need more attention"};
+const GRID_PRE={trust:"Trust: ",informed:"Informed: ",helps:"Helps: "};
+let _ANSQ=null;function ANSQ(){if(_ANSQ)return _ANSQ;const o=[];
+  for(const k in S.single){if(S.filterDims.includes(k)||k==="day")continue;o.push({id:"s:"+k,t:"s",key:k,label:ANS_SHORT[k]||S.single[k].t,order:S.single[k].order});}
+  for(const g in S.grids){const G=S.grids[g];for(const k in G.items)o.push({id:"g:"+k,t:"g",key:k,label:(GRID_PRE[g]||"")+G.items[k],order:[...G.scale,...(G.extra?[G.extra]:[])]});}
+  for(const k in S.multi)o.push({id:"m:"+k,t:"m",key:k,label:ANS_SHORT[k]||S.multi[k].t});
+  return _ANSQ=o;}
+function ansCounts(q){return q.t==="m"?counts(ALL,q.key,null,true):counts(ALL,q.key,q.order);}
+function ansMatch(r){const {q,a}=state.ans;if(!q||!a)return true;const d=ANSQ().find(x=>x.id===q);if(!d)return true;return d.t==="m"?(r["_"+d.key]||[]).includes(a):r[d.key]===a;}
+function ansFilterHtml(){const qs=ANSQ();const cur=qs.find(x=>x.id===state.ans.q);
+  const og=[["Single answer","s"],["Rating grids","g"],["Choose-all (has this option)","m"]].map(([lab,t])=>`<optgroup label="${lab}">${qs.filter(x=>x.t===t).map(x=>`<option value="${esc(x.id)}" ${state.ans.q===x.id?"selected":""}>${esc(x.label.length>62?x.label.slice(0,60)+"…":x.label)}</option>`).join("")}</optgroup>`).join("");
+  let a="";if(cur){const c=ansCounts(cur);a=`<select id="ansa"><option value="">Pick an answer</option>${c.items.map(i=>`<option value="${esc(i.k)}" ${state.ans.a===i.k?"selected":""}>${esc(i.k)} (${i.v})</option>`).join("")}</select>`;}
+  return `<label>Filter by an answer<select id="ansq"><option value="">None</option>${og}</select>${a}</label>`;}
+function ansBanner(){const {q,a}=state.ans;if(!q||!a)return"";const d=ANSQ().find(x=>x.id===q);if(!d)return"";
+  return `<div class="card" style="background:#FFFBE0;border-color:#d9c84a;padding:10px 14px;font-size:14px">Showing only people who answered <b>${esc(a)}</b> to: ${esc(d.label)}. <a id="ansclear" style="color:var(--accent);cursor:pointer;text-decoration:underline">Clear</a></div>`;}
 
 // ---------- helpers ----------
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -810,12 +827,12 @@ function renderNav(){document.getElementById("nav").innerHTML=SECTIONS.map(([k,l
 function renderFilters(){
   const el=document.getElementById("filters");const rows=filtered();
   el.innerHTML=S.filterDims.map(k=>{const d=S.single[k];const c=counts(ALL,k,d.order);return `<label>${esc(d.t.length>28?d.t.slice(0,26)+"…":d.t)}<select data-f="${k}"><option value="">All</option>${c.items.map(i=>`<option value="${esc(i.k)}" ${state.filters[k]===i.k?"selected":""}>${esc(i.k)} (${i.v})</option>`).join("")}</select></label>`;}).join("")+
-  `<label>Compare by<select id="cmp"><option value="">None</option>${S.filterDims.map(k=>`<option value="${k}" ${state.compare===k?"selected":""}>${esc(S.single[k].t)}</option>`).join("")}</select></label><button id="reset">Reset filters</button><div class="count"><b>${rows.length}</b> of ${ALL.length} responses</div><div class="who">Notes signed as <b>${esc(ME||"…")}</b> · <a id="rename">change</a></div>`;
+  ansFilterHtml()+`<label>Compare by<select id="cmp"><option value="">None</option>${[...S.filterDims,...S.compareExtra].map(k=>`<option value="${k}" ${state.compare===k?"selected":""}>${esc(S.single[k].t)}</option>`).join("")}</select></label><button id="reset">Reset filters</button><div class="count"><b>${rows.length}</b> of ${ALL.length} responses</div><div class="who">Notes signed as <b>${esc(ME||"…")}</b> · <a id="rename">change</a></div>`;
 }
 function renderMain(){
   const rows=filtered();const m=document.getElementById("main");
   const p=state.page;
-  m.innerHTML=`<section class="page on">${p==="overview"?pageOverview(rows):p==="sources"?pageSources(rows):p==="informed"?pageInformed(rows):p==="actions"?pageActions(rows):p==="topics"?pageTopics(rows):p==="emerg"?pageEmerg(rows):p==="who"?pageWho(rows):p==="text"?pageText(rows):pageMethod()}</section>`;
+  m.innerHTML=`<section class="page on">${ansBanner()}${p==="overview"?pageOverview(rows):p==="sources"?pageSources(rows):p==="informed"?pageInformed(rows):p==="actions"?pageActions(rows):p==="topics"?pageTopics(rows):p==="emerg"?pageEmerg(rows):p==="who"?pageWho(rows):p==="text"?pageText(rows):pageMethod()}</section>`;
   if(p==="text"){const q=document.getElementById("q");q.oninput=e=>{state.q=e.target.value;clearTimeout(q._t);q._t=setTimeout(()=>{renderMain();document.getElementById("q").focus();},250);};
     document.getElementById("field").onchange=e=>{state.field=e.target.value;renderMain();};
     document.getElementById("tagOnly").onchange=e=>{state.tagOnly=e.target.checked;renderMain();};
@@ -830,7 +847,8 @@ async function download(name,text){
   if(window.claude&&typeof window.claude.use==="function"){const d=await window.claude.use("downloads");if(d){try{await d.save({filename:name,data:text});}catch(e){if(e&&e.code!=="declined")alert("Download unavailable here: "+(e.message||e.code));}return;}}
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download=name;a.click();}
 document.addEventListener("click",e=>{const b=e.target.closest("nav button");if(b){state.page=b.dataset.p;renderNav();renderMain();window.scrollTo(0,0);}
-  if(e.target.id==="reset"){state.filters={};state.compare="";renderFilters();renderMain();}
+  if(e.target.id==="ansclear"){state.ans={q:"",a:""};renderFilters();renderMain();}
+  if(e.target.id==="reset"){state.filters={};state.ans={q:"",a:""};state.compare="";renderFilters();renderMain();}
   if(e.target.id==="rename"){document.getElementById("gate").style.display="flex";document.getElementById("gatename").value=ME;document.getElementById("gatename").focus();}
   if(e.target.id==="gatego"){const v=document.getElementById("gatename").value.trim();if(!v){document.getElementById("gatename").focus();return;}ME=v;try{localStorage.setItem("dalles_name",ME)}catch(x){}document.getElementById("gate").style.display="none";renderFilters();}
   const add=e.target.closest(".addnote");if(add){const target=add.dataset.note;if(add.nextElementSibling&&add.nextElementSibling.classList.contains("noteform"))return;const f=document.createElement("div");f.className="noteform";f.innerHTML=`<textarea rows="2" placeholder="Leave a note for the class"></textarea><button class="savenote">Post</button><button class="cancelnote">Cancel</button>`;add.after(f);f.querySelector("textarea").focus();f.querySelector(".savenote").onclick=async()=>{const txt=f.querySelector("textarea").value.trim();if(!txt)return;f.remove();await addSticky(target,txt);};f.querySelector(".cancelnote").onclick=()=>f.remove();}
@@ -838,7 +856,9 @@ document.addEventListener("click",e=>{const b=e.target.closest("nav button");if(
 document.addEventListener("click",e=>{const g=e.target.closest&&e.target.closest(".tl-row");if(!g)return;const d=g.dataset.day;if(!ALL.some(r=>r.day===d))return;state.filters.day=state.filters.day===d?"":d;renderFilters();renderMain();});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="gatename")document.getElementById("gatego").click();});
 document.addEventListener("change",e=>{if(e.target.dataset&&e.target.dataset.f){state.filters[e.target.dataset.f]=e.target.value;renderFilters();renderMain();}
-  if(e.target.id==="cmp"){state.compare=e.target.value;renderMain();}});
+  if(e.target.id==="cmp"){state.compare=e.target.value;renderMain();}
+  if(e.target.id==="ansq"){state.ans={q:e.target.value,a:""};renderFilters();renderMain();}
+  if(e.target.id==="ansa"){state.ans.a=e.target.value;renderFilters();renderMain();}});
 const tip=document.getElementById("tip");
 document.addEventListener("mousemove",e=>{const t=e.target.closest&&e.target.closest("[data-tip]");if(t){tip.textContent=t.dataset.tip;tip.style.display="block";tip.style.left=(e.clientX+12)+"px";tip.style.top=(e.clientY+12)+"px";}else tip.style.display="none";});
 
