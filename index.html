@@ -516,7 +516,7 @@ Citizens—- instead have 1 page with all of that info run by leaders or people 
 </script>
 <script>
 // ---------- schema ----------
-const META = {exportDate: "November 4, 2026", version: "clean set v5"};
+const META = {exportDate: "November 4, 2026", version: "clean set v5", page: "explorer v5.4"};
 const NOTES_API = "https://script.google.com/macros/s/AKfycbw7NDuZPsTEZuXxdv_lAEjrzeO5UTvMzToI5bx1jBesSi4zqYhz3ser6AsVJqXHb-T4Cg/exec"; // Google Apps Script web app URL; empty means use the Claude page database or local storage
 const S = {
   single: {
@@ -892,7 +892,7 @@ const tip=document.getElementById("tip");
 document.addEventListener("mousemove",e=>{const t=e.target.closest&&e.target.closest("[data-tip]");if(t){tip.textContent=t.dataset.tip;tip.style.display="block";tip.style.left=(e.clientX+12)+"px";tip.style.top=(e.clientY+12)+"px";}else tip.style.display="none";});
 
 ALL=prep(loadRows(document.getElementById("csv").textContent));
-document.getElementById("sub").textContent+=` · ${ALL.length} cleaned responses (${META.version}) · export of ${META.exportDate}`;
+document.getElementById("sub").textContent+=` · ${ALL.length} cleaned responses (${META.version}) · export of ${META.exportDate}${META.page?" · "+META.page:""}`;
 readHash();renderNav();renderFilters();renderMain();goAt();
 if(ME){document.getElementById("gate").style.display="none";}else{document.getElementById("gatename").focus();}
 initShared();
