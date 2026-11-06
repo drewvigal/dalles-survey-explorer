@@ -39,6 +39,8 @@ main{flex:1;min-width:0;padding:16px}
 .sticky{background:#FFF4A3;color:#3a3100;border-radius:3px;padding:10px 12px;max-width:280px;font-size:13px;line-height:1.4;box-shadow:1px 2px 4px rgba(0,0,0,.15);transform:rotate(-0.4deg);position:relative;white-space:pre-wrap;word-break:break-word}
 .sticky:nth-child(even){transform:rotate(0.5deg)}
 .sticky .by{display:block;font-size:11px;color:#6b5c00;margin-top:6px}
+.sticky .by a{color:inherit;text-decoration:underline;cursor:pointer}
+.flash{outline:3px solid #fee123;outline-offset:4px;transition:outline-color 1.5s}
 .sticky .del{position:absolute;top:2px;right:6px;border:0;background:none;color:#8a7a00;cursor:pointer;font-size:14px}
 .addnote{display:inline-block;margin-top:8px;font-size:12px;color:var(--accent);background:none;border:1px dashed var(--accent);border-radius:6px;padding:3px 9px;cursor:pointer}
 .noteform{margin-top:8px;display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap}
@@ -652,11 +654,11 @@ function saveLocalSticky(){try{localStorage.setItem("dalles_sticky",JSON.stringi
 function allSticky(){return (DBMODE==="shared"||DBMODE==="api")?STICKY:DBMODE==="read"?[...STICKY,...STICKY_LOCAL]:STICKY_LOCAL;}
 function stickyFor(target){return allSticky().filter(n=>n.target===target).sort((a,b)=>(a.ts||0)-(b.ts||0));}
 function stickyInner(target){const ns=stickyFor(target);const mode=(DBMODE==="shared"||DBMODE==="api")?"Shared with everyone who opens this page.":DBMODE==="read"?"You can read shared notes here; posting needs Contributor access, so your notes stay on this device.":"Saved on this device only.";
-  return `<div class="stickies">${ns.map(n=>`<div class="sticky">${n.by===MYID?`<button class="del" data-del="${esc(n.id)}" title="Remove my note">×</button>`:""}${esc(n.text)}<span class="by">${esc(n.name)} · ${new Date(n.ts).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>`).join("")}</div><button class="addnote" data-note="${esc(target)}">+ Sticky note</button> <span class="notemode">${ns.length?"":mode}</span>`;}
+  return `<div class="stickies">${ns.map(n=>`<div class="sticky">${n.by===MYID?`<button class="del" data-del="${esc(n.id)}" title="Remove my note">×</button>`:""}${esc(n.text)}<span class="by">${nameLink(n)} · ${new Date(n.ts).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>`).join("")}</div><button class="addnote" data-note="${esc(target)}">+ Sticky note</button> <span class="notemode">${ns.length?"":mode}</span>`;}
 function stickyHtml(target){return `<div class="stickywrap" data-target="${esc(target)}">${stickyInner(target)}</div>`;}
 async function apiList(){try{const r=await fetch(NOTES_API+(NOTES_API.includes("?")?"&":"?")+"t="+Date.now(),{cache:"no-store"});const j=await r.json();if(j&&j.ok){STICKY=j.notes||[];const targets=new Set([...STICKY.map(n=>n.target),...[...document.querySelectorAll(".stickywrap")].map(e=>e.dataset.target)]);targets.forEach(refreshSticky);}}catch(e){}}
 async function apiPost(body){const r=await fetch(NOTES_API,{method:"POST",body:JSON.stringify(body)});return r.json();}
-async function addSticky(target,text){const n={id:Math.random().toString(36).slice(2)+Date.now().toString(36),target,text,name:ME,by:MYID,ts:Date.now()};
+async function addSticky(target,text){const n={id:Math.random().toString(36).slice(2)+Date.now().toString(36),target,text,name:ME,by:MYID,ts:Date.now(),view:viewHash()||"p=overview"};
   if(DBMODE==="api"){STICKY.push(n);refreshSticky(target);try{await apiPost({action:"add",...n,secret:SECRET});}catch(e){alert("Could not save the note. Check your connection and try again.");}apiList();return;}
   if(DBMODE==="shared"){try{await DBREF.collection("notes").doc(n.id).set(n);return;}catch(e){DBMODE="local";}}
   STICKY_LOCAL.push(n);saveLocalSticky();refreshSticky(target);}
@@ -706,15 +708,25 @@ function readHash(){try{const h=new URLSearchParams(location.hash.slice(1));if(!
   S.filterDims.forEach(k=>{const v=h.get(k);if(v)ns.filters[k]=v;});
   const aq=h.get("aq");if(aq&&ANSQ().some(x=>x.id===aq))ns.ans={q:aq,a:h.get("aa")||""};
   const c=h.get("cmp");if(c&&[...S.filterDims,...S.compareExtra].includes(c))ns.compare=c;
-  if(h.get("q"))ns.q=h.get("q");const fl=h.get("fld");if(fl&&(fl==="all"||S.text[fl]))ns.field=fl;
+  if(h.get("q"))ns.q=h.get("q");ns.at=h.get("at")||"";const fl=h.get("fld");if(fl&&(fl==="all"||S.text[fl]))ns.field=fl;
   Object.assign(state,ns);return true;}catch(e){return false;}}
+function viewHash(){const h=new URLSearchParams();if(state.page!=="overview")h.set("p",state.page);
+  Object.entries(state.filters).forEach(([k,v])=>{if(v)h.set(k,v);});
+  if(state.ans.q){h.set("aq",state.ans.q);if(state.ans.a)h.set("aa",state.ans.a);}
+  if(state.compare)h.set("cmp",state.compare);if(state.q)h.set("q",state.q);if(state.field!=="all")h.set("fld",state.field);
+  return h.toString();}
+// a note's author name links to the view they were looking at when they posted, scrolled to the note
+function nameLink(n){if(!n.view)return esc(n.name);const h=n.view+"&at="+encodeURIComponent(n.target);
+  return `<a href="#${esc(h)}" title="Open the view ${esc(n.name)} was looking at">${esc(n.name)}</a>`;}
+function goAt(){if(!state.at)return;const t=state.at;state.at="";setTimeout(()=>{let el=null;try{el=document.querySelector(`.stickywrap[data-target="${CSS.escape(t)}"]`);}catch(e){}
+  if(!el)return;const box=el.closest(".card,.resp")||el;box.scrollIntoView({behavior:"smooth",block:"center"});box.classList.add("flash");setTimeout(()=>box.classList.remove("flash"),2500);},50);}
 function writeHash(){try{const h=new URLSearchParams();if(state.page!=="overview")h.set("p",state.page);
   Object.entries(state.filters).forEach(([k,v])=>{if(v)h.set(k,v);});
   if(state.ans.q){h.set("aq",state.ans.q);if(state.ans.a)h.set("aa",state.ans.a);}
   if(state.compare)h.set("cmp",state.compare);if(state.q)h.set("q",state.q);if(state.field!=="all")h.set("fld",state.field);
   const t=h.toString();const url=location.pathname+location.search+(t?"#"+t:"");
   if(url!==location.pathname+location.search+location.hash)history.replaceState(null,"",url);}catch(e){}}
-window.addEventListener("hashchange",()=>{if(readHash()){renderNav();renderFilters();renderMain();}});
+window.addEventListener("hashchange",()=>{if(readHash()){renderNav();renderFilters();renderMain();window.scrollTo(0,0);goAt();}});
 
 // ---------- helpers ----------
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -881,7 +893,7 @@ document.addEventListener("mousemove",e=>{const t=e.target.closest&&e.target.clo
 
 ALL=prep(loadRows(document.getElementById("csv").textContent));
 document.getElementById("sub").textContent+=` · ${ALL.length} cleaned responses (${META.version}) · export of ${META.exportDate}`;
-readHash();renderNav();renderFilters();renderMain();
+readHash();renderNav();renderFilters();renderMain();goAt();
 if(ME){document.getElementById("gate").style.display="none";}else{document.getElementById("gatename").focus();}
 initShared();
 </script>
